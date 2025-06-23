@@ -1,0 +1,733 @@
+openapi: 3.0.4
+info:
+  title: PassPal Public API
+  version: '1.0.0'
+  description: |
+    PassPal バックエンド API。認証は Firebase Authentication、通知は Firebase Cloud Messaging を使用。
+servers:
+  - url: https://api.chukyo-passpal.app/v1
+
+# ① 既定では FirebaseAuth 必須
+security:
+  - FirebaseAuth: []
+
+components:
+  securitySchemes:
+    FirebaseAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Firebase ID Token を `Authorization: Bearer <token>` ヘッダで送信してください。
+
+  # ---------- 共通レスポンス ----------
+  responses:
+    UnauthorizedError:
+      description: 認証情報が無効、または不足しています。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { code: 'UNAUTHORIZED', message: 'トークンが無効です。' }
+    ForbiddenError:
+      description: BAN などによりアクセスが拒否されました。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            {
+              code: 'BANNED',
+              message: 'あなたのアカウントは停止されています。',
+            }
+    NotFoundError:
+      description: 指定されたコンテンツを見つけることができませんでした。
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            {
+              code: 'NOT_FOUND',
+              message: '指定されたコンテンツは存在しません。',
+            }
+
+  # ---------- 共通スキーマ ----------
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+    Message:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+
+    CreatedId:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+
+    PaginationMeta:
+      type: object
+      required: [page, per_page, total_pages, total_items]
+      properties:
+        page: { type: integer, example: 1 }
+        per_page: { type: integer, example: 20 }
+        total_pages: { type: integer, example: 5 }
+        total_items: { type: integer, example: 84 }
+
+    # ---------- ドメインスキーマ ----------
+    Course:
+      type: object
+      required: [id, title, leadInstructor]
+      properties:
+        id:
+          {
+            type: string,
+            format: uuid,
+            example: 018c7e0c-4a7d-7c7e-8df4-6d47afd8c8fc,
+          }
+        title: { type: string, example: 計算機科学概論 }
+        leadInstructor: { type: string, example: 山田 太郎 }
+
+    CourseList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Course' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    CourseRating:
+      type: object
+      required: [courseId, userId, star, createdAt, updatedAt]
+      properties:
+        courseId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        star: { type: integer, minimum: 1, maximum: 5, example: 4 }
+        comment: { type: string, example: '課題は多いが身になる授業でした' }
+        createdAt:
+          { type: string, format: date-time, example: '2025-04-10T02:14:00Z' }
+        updatedAt: { type: string, format: date-time }
+
+    CourseRatingList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/CourseRating' }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+    Class:
+      type: object
+      required: [id, term, manaboClassId, courseId]
+      properties:
+        id: { type: string, format: uuid }
+        term: { type: string, example: 2025_春学期 }
+        manaboClassId: { type: string }
+        courseId: { type: string, format: uuid }
+
+    Assignment:
+      type: object
+      required:
+        [
+          id,
+          classId,
+          manaboDirectoryId,
+          manaboAssignmentId,
+          openAt,
+          dueAt,
+          status,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        classId: { type: string, format: uuid }
+        manaboDirectoryId: { type: string }
+        manaboAssignmentId: { type: string }
+        openAt: { type: string, format: date-time }
+        dueAt: { type: string, format: date-time }
+        status: { type: string, enum: [opened, deleted], example: opened }
+
+    AttendanceLog:
+      type: object
+      required: [id, term, recordDate, weekday, period, status]
+      properties:
+        id: { type: string, format: uuid }
+        term: { type: string }
+        recordDate: { type: string, format: date }
+        weekday:
+          {
+            type: string,
+            enum:
+              [monday, tuesday, wednesday, thursday, friday, saturday, sunday],
+          }
+        period: { type: integer, example: 3 }
+        status:
+          { type: string, enum: [present, absent, late], example: present }
+
+    NotificationReport:
+      type: object
+      required: [id, assignmentId, reportType, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        assignmentId: { type: string, format: uuid }
+        reportType: { type: string, enum: [appeared, changed, disappeared] }
+        createdAt: { type: string, format: date-time }
+
+paths:
+  # ---------- Auth ----------
+  /signup:
+    post:
+      tags: [Auth]
+      summary: Sign Up
+      security: [] # ← 認証不要
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firebaseUid]
+              properties:
+                firebaseUid: { type: string }
+            example: { firebaseUid: 'xxxxxxxxxxxxxxxxxxxx' }
+      responses:
+        '201':
+          description: ユーザー登録成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+              example: { message: 'created' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  # ---------- Devices ----------
+  /devices:
+    post:
+      tags: [Devices]
+      summary: デバイストークン登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fcmToken, deviceOs]
+              properties:
+                fcmToken: { type: string }
+                deviceOs: { type: string, enum: [ios, android, web] }
+            example: { fcmToken: 'dEV1c3T0ken', deviceOs: 'ios' }
+      responses:
+        '201':
+          description: 登録完了
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatedId' }
+              example: { id: '018c7e0c-aaaa-bbbb-cccc-6d47afd8c8fc' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /devices/{deviceId}:
+    delete:
+      tags: [Devices]
+      summary: デバイストークン削除
+      parameters:
+        - in: path
+          name: deviceId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: 削除完了 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  # ---------- Courses ----------
+  /courses:
+    get:
+      tags: [Courses]
+      summary: 授業科目リスト取得
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1, minimum: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseList' }
+              example:
+                data:
+                  - id: 018c7e0c-4a7d-7c7e-8df4-6d47afd8c8fc
+                    title: 計算機科学概論
+                    leadInstructor: 山田 太郎
+                meta: { page: 1, per_page: 20, total_pages: 1, total_items: 1 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /courses/{courseId}:
+    get:
+      tags: [Courses]
+      summary: 授業科目詳細取得
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+              example:
+                id: 018c7e0c-4a7d-7c7e-8df4-6d47afd8c8fc
+                title: 計算機科学概論
+                leadInstructor: 山田 太郎
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /courses/{courseId}/ratings:
+    get:
+      tags: [CourseRatings]
+      summary: 授業科目の評価リスト取得
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: sort
+          schema: { type: string, example: '-createdAt' }
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseRatingList' }
+              example:
+                data:
+                  - courseId: 018c7e0c-4a7d-7c7e-8df4-6d47afd8c8fc
+                    userId: 018c7e0c-aaaa-bbbb-cccc-6d47afd8c8fc
+                    star: 4
+                    comment: '課題は多いが身になる授業でした'
+                    createdAt: '2025-04-10T02:14:00Z'
+                    updatedAt: '2025-04-10T02:14:00Z'
+                meta: { page: 1, per_page: 20, total_pages: 1, total_items: 1 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+    post:
+      tags: [CourseRatings]
+      summary: 授業科目の評価登録/上書き
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [star]
+              properties:
+                star: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+            example: { star: 5, comment: '最高の授業' }
+      responses:
+        '201':
+          description: 登録成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseRating' }
+              example:
+                courseId: 018c7e0c-4a7d-7c7e-8df4-6d47afd8c8fc
+                userId: 018c7e0c-aaaa-bbbb-cccc-6d47afd8c8fc
+                star: 5
+                comment: '最高の授業'
+                createdAt: '2025-04-10T02:14:00Z'
+                updatedAt: '2025-04-10T02:14:00Z'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+    delete:
+      tags: [CourseRatings]
+      summary: 授業科目の評価削除
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: 削除成功 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  # ---------- Classes ----------
+  /class:
+    get:
+      tags: [Classes]
+      summary: 授業詳細取得
+      parameters:
+        - in: query
+          name: manaboClassId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: term
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Class' }
+              example:
+                id: 018c7e0c-bbbb-cccc-dddd-6d47afd8c8fc
+                term: 2025_春学期
+                manaboClassId: CS101
+                courseId: 018c7e0c-aaaa-aaaa-aaaa-6d47afd8c8fc
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+    post:
+      tags: [Classes]
+      summary: 授業登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manaboClassId, term, title, leadInstructor]
+              properties:
+                manaboClassId: { type: string }
+                term: { type: string }
+                title: { type: string }
+                leadInstructor: { type: string }
+            example:
+              manaboClassId: CS101
+              term: 2025_春学期
+              title: 計算機科学概論
+              leadInstructor: 山田 太郎
+      responses:
+        '201':
+          description: 登録完了
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Class' }
+              example:
+                id: 018c7e0c-bbbb-cccc-dddd-6d47afd8c8fc
+                term: 2025_春学期
+                manaboClassId: CS101
+                courseId: 018c7e0c-aaaa-aaaa-aaaa-6d47afd8c8fc
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /classes/{classId}/notifications:
+    parameters:
+      - in: path
+        name: classId
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [ClassNotifications]
+      summary: 授業への通知登録
+      responses:
+        '201':
+          description: 登録完了
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [classId]
+                properties:
+                  classId: { type: string, format: uuid }
+              example: { classId: '018c7e0c-bbbb-cccc-dddd-6d47afd8c8fc' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+    delete:
+      tags: [ClassNotifications]
+      summary: 授業への通知削除
+      responses:
+        '204': { description: 解除完了 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /classes/notified:
+    get:
+      tags: [ClassNotifications]
+      summary: 通知登録授業リスト取得
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Class' }
+              example:
+                data:
+                  - id: 018c7e0c-bbbb-cccc-dddd-6d47afd8c8fc
+                    term: 2025_春学期
+                    manaboClassId: 'CS101'
+                    courseId: 018c7e0c-aaaa-aaaa-aaaa-6d47afd8c8fc
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /classes/{classId}/assignments:
+    parameters:
+      - in: path
+        name: classId
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Assignments]
+      summary: 授業の課題リスト取得
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Assignment' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+              example:
+                data:
+                  - id: 018c7e0c-eeee-ffff-0000-6d47afd8c8fc
+                    classId: 018c7e0c-bbbb-cccc-dddd-6d47afd8c8fc
+                    manaboDirectoryId: 'week01'
+                    manaboAssignmentId: 'hw01'
+                    openAt: '2025-04-12T00:00:00Z'
+                    dueAt: '2025-04-19T14:59:00Z'
+                    status: opened
+                meta:
+                  page: 1
+                  per_page: 20
+                  total_pages: 1
+                  total_items: 1
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /assignments/{assignmentId}:
+    parameters:
+      - in: path
+        name: assignmentId
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Assignments]
+      summary: 授業の課題詳細取得
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+              example:
+                id: 018c7e0c-eeee-ffff-0000-6d47afd8c8fc
+                classId: 018c7e0c-bbbb-cccc-dddd-6d47afd8c8fc
+                manaboDirectoryId: 'week01'
+                manaboAssignmentId: 'hw01'
+                openAt: '2025-04-12T00:00:00Z'
+                dueAt: '2025-04-19T14:59:00Z'
+                status: opened
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /attendance-logs:
+    get:
+      tags: [AttendanceLogs]
+      summary: 出欠ログ取得
+      parameters:
+        - in: query
+          name: term
+          required: true
+          schema: { type: string, example: 2025_春学期 }
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AttendanceLog' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+              example:
+                data:
+                  - id: 018c7e0c-1111-2222-3333-6d47afd8c8fc
+                    term: 2025_春学期
+                    recordDate: '2025-04-15'
+                    weekday: tuesday
+                    period: 2
+                    status: late
+                meta:
+                  page: 1
+                  per_page: 20
+                  total_pages: 1
+                  total_items: 1
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+    post:
+      tags: [AttendanceLogs]
+      summary: 出欠ログ登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [term, recordDate, weekday, period, status]
+              properties:
+                term: { type: string }
+                recordDate: { type: string, format: date }
+                weekday:
+                  {
+                    type: string,
+                    enum:
+                      [
+                        monday,
+                        tuesday,
+                        wednesday,
+                        thursday,
+                        friday,
+                        saturday,
+                        sunday,
+                      ],
+                  }
+                period: { type: integer }
+                status: { type: string, enum: [present, absent, late] }
+            example:
+              term: 2025_春学期
+              recordDate: '2025-05-01'
+              weekday: thursday
+              period: 4
+              status: present
+      responses:
+        '201':
+          description: 登録成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceLog' }
+              example:
+                id: 018c7e0c-7777-8888-9999-6d47afd8c8fc
+                term: 2025_春学期
+                recordDate: '2025-05-01'
+                weekday: thursday
+                period: 4
+                status: present
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /attendance-logs/{attendanceLogId}:
+    parameters:
+      - in: path
+        name: attendanceLogId
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [AttendanceLogs]
+      summary: 出欠ログ更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [present, absent, late] }
+            example: { status: absent }
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceLog' }
+              example:
+                id: 018c7e0c-1111-2222-3333-6d47afd8c8fc
+                status: absent
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+    delete:
+      tags: [AttendanceLogs]
+      summary: 出欠ログ削除
+      responses:
+        '204': { description: 削除成功 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  /notification-reports:
+    post:
+      tags: [NotificationReports]
+      summary: 課題通知報告
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manaboDirectoryId, manaboAssignmentId, reportType]
+              properties:
+                manaboDirectoryId: { type: string }
+                manaboAssignmentId: { type: string }
+                openAt: { type: string, format: date-time }
+                dueAt: { type: string, format: date-time }
+                reportType:
+                  { type: string, enum: [appeared, changed, disappeared] }
+            example:
+              manaboDirectoryId: '41322'
+              manaboAssignmentId: '54232'
+              openAt: '2025-04-19T15:00:00Z'
+              dueAt: '2025-04-29T15:00:00Z'
+              reportType: appeared
+      responses:
+        '201':
+          description: 報告受理
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationReport' }
+              example:
+                id: 018c7e0c-aaaa-bbbb-cccc-6d47afd8c8fc
+                assignmentId: 018c7e0c-eeee-ffff-0000-6d47afd8c8fc
+                reportType: appeared
+                createdAt: '2025-04-19T15:00:00Z'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+
+  # のみで構造自体は変更がないため省略
+  # （全文を差し替える場合は同様のパターンで修正してください）
