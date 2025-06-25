@@ -1,0 +1,205 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum AssignmentStatus {
+  opened
+  deleted
+
+  @@map("assignment_status_enum")
+}
+
+enum ReportType {
+  appeared
+  changed
+  disappeared
+
+  @@map("report_type_enum")
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+
+  @@map("attendance_status_enum")
+}
+
+enum Weekday {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+
+  @@map("weekday_enum")
+}
+
+enum DeviceOs {
+  ios
+  android
+  web
+
+  @@map("device_os_enum")
+}
+
+// Models
+model Course {
+  id             String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  title          String
+  leadInstructor String   @map("lead_instructor")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  ratings CourseRating[]
+  classes Class[]
+
+  @@unique([title, leadInstructor])
+  @@map("courses")
+}
+
+model CourseRating {
+  courseId  String   @map("course_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  star      Int      @db.SmallInt
+  comment   String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, userId])
+  @@map("course_ratings")
+}
+
+model User {
+  id          String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  firebaseUid String   @unique @map("firebase_uid")
+  banned      Boolean  @default(false)
+  banReason   String?  @map("ban_reason")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  devices           UserDevice[]
+  attendanceLogs    AttendanceLog[]
+  notificationReports NotificationReport[]
+  ratings           CourseRating[]
+  classNotifiers    ClassNotifier[]
+
+  @@map("users")
+}
+
+model UserDevice {
+  id        String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  fcmToken  String   @map("fcm_token")
+  deviceOs  DeviceOs @map("device_os")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fcmToken])
+  @@map("user_devices")
+}
+
+model AttendanceLog {
+  id         String           @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  term       String
+  recordDate DateTime         @map("record_date") @db.Date
+  weekday    Weekday
+  period     Int              @db.SmallInt
+  status     AttendanceStatus
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, term])
+  @@index([recordDate])
+  @@map("attendance_logs")
+}
+
+model NotificationReport {
+  id           String     @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  userId       String     @map("user_id") @db.Uuid
+  assignmentId String     @map("assignment_id") @db.Uuid
+  reportType   ReportType @map("report_type")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@map("notification_reports")
+}
+
+model Class {
+  id            String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  term          String
+  manaboClassId String   @map("manabo_class_id")
+  courseId      String?  @map("course_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  course     Course?         @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  notifiers  ClassNotifier[]
+  assignments Assignment[]
+
+  @@unique([term, manaboClassId])
+  @@map("classes")
+}
+
+model ClassNotifier {
+  classId String @map("class_id") @db.Uuid
+  userId  String @map("user_id") @db.Uuid
+
+  // Relations
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([classId, userId])
+  @@map("class_notifiers")
+}
+
+model Assignment {
+  id                  String           @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
+  classId             String           @map("class_id") @db.Uuid
+  manaboDirectoryId   String           @map("manabo_directory_id")
+  manaboAssignmentId  String           @map("manabo_assignment_id")
+  openAt              DateTime?        @map("open_at") @db.Timestamptz(6)
+  dueAt               DateTime?        @map("due_at") @db.Timestamptz(6)
+  status              AssignmentStatus
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  class               Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  notificationReports NotificationReport[]
+
+  @@unique([classId, manaboDirectoryId, manaboAssignmentId])
+  @@map("assignments")
+}
