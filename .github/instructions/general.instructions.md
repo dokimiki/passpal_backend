@@ -11,7 +11,10 @@ It manages users, courses, classes, assignments, attendance logs, device tokens,
 
 **Authentication:**
 
-- All endpoints except `/signup` require Firebase Authentication (JWT Bearer Token, see Swagger).
+- **ALL ENDPOINTS ARE PROTECTED BY DEFAULT** - Firebase Authentication is enforced globally via `FirebaseAuthGuard`.
+- Only `/signup` endpoint is public (marked with `@Public()` decorator).
+- All other endpoints require a valid Firebase JWT Bearer Token in the Authorization header.
+- The system automatically validates tokens, checks user status (banned/active), and injects user data into requests.
 
 ---
 
@@ -151,3 +154,130 @@ It manages users, courses, classes, assignments, attendance logs, device tokens,
 - When in doubt about relationships, **refer to the comments in the SQL schema.**
 - Follow enum values exactly.
 - Implement error handling as specified in the OpenAPI for all endpoints.
+
+---
+
+## 11. Authentication Implementation & Usage
+
+### 11.1 Global Authentication System
+
+**ALL ENDPOINTS ARE PROTECTED BY DEFAULT** unless explicitly marked as public.
+
+- `FirebaseAuthGuard` is registered as a global guard in `AppModule`
+- Validates Firebase JWT tokens automatically
+- Checks user ban status and throws `ForbiddenException` if banned
+- Injects `User` and `DecodedIdToken` objects into request context
+
+### 11.2 Making Endpoints Public (No Authentication)
+
+Use the `@Public()` decorator to bypass authentication:
+
+```typescript
+import { Public } from '../auth/decorators/public.decorator';
+
+@Controller('some-public-resource')
+export class PublicController {
+  @Get()
+  @Public()  // ← This endpoint requires NO authentication
+  async getPublicData() {
+    return this.someService.getPublicData();
+  }
+}
+```
+
+### 11.3 Using Current User in Protected Endpoints
+
+Use `@CurrentUser()` decorator to get the authenticated user:
+
+```typescript
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '@prisma/client';
+
+@Controller('protected-resource')
+export class ProtectedController {
+  @Get()
+  async getUserData(@CurrentUser() user: User) {
+    // user contains the authenticated User from database
+    return this.someService.getDataForUser(user.id);
+  }
+
+  @Post()
+  async createResource(
+    @CurrentUser() user: User,
+    @Body() createDto: CreateResourceDto,
+  ) {
+    return this.someService.create({
+      ...createDto,
+      userId: user.id, // Automatically link to authenticated user
+    });
+  }
+}
+```
+
+### 11.4 Using Firebase User Data
+
+Use `@CurrentFirebaseUser()` to access Firebase's DecodedIdToken:
+
+```typescript
+import { CurrentFirebaseUser } from '../auth/decorators/current-user.decorator';
+import { DecodedIdToken } from 'firebase-admin/auth';
+
+@Controller('firebase-data')
+export class FirebaseController {
+  @Get('profile')
+  async getFirebaseProfile(@CurrentFirebaseUser() firebaseUser: DecodedIdToken) {
+    // firebaseUser contains Firebase token data (uid, email, etc.)
+    return {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      emailVerified: firebaseUser.email_verified,
+    };
+  }
+}
+```
+
+### 11.5 Authentication Error Handling
+
+The system automatically handles authentication errors:
+
+- **401 Unauthorized**: Invalid/missing token, user not found in database
+- **403 Forbidden**: User is banned (includes ban reason in message)
+
+Example error responses:
+```json
+// Missing token
+{
+  "code": "UNAUTHORIZED",
+  "message": "No token provided"
+}
+
+// Banned user
+{
+  "code": "FORBIDDEN", 
+  "message": "User is banned due to policy violation"
+}
+```
+
+### 11.6 Authentication Setup Requirements
+
+1. **Firebase Admin SDK**: Must be configured with service account credentials
+2. **Environment Variables**: Set `GOOGLE_APPLICATION_CREDENTIALS` or Firebase config
+3. **User Registration**: Users must be created via `/signup` endpoint before accessing protected routes
+
+### 11.7 Standard Authentication Flow
+
+1. **Frontend**: User authenticates with Firebase Auth, obtains JWT token
+2. **API Request**: Include token in `Authorization: Bearer <token>` header
+3. **Backend**: `FirebaseAuthGuard` validates token with Firebase Admin SDK
+4. **Database Lookup**: Find user by `firebase_uid`, check ban status
+5. **Request Context**: Inject user data into request for controller access
+
+### 11.8 Development Guidelines
+
+- **New Controllers**: No need to add authentication guards - they're global by default
+- **Public Endpoints**: Always use `@Public()` decorator explicitly
+- **User Context**: Always use `@CurrentUser()` instead of extracting user from request manually
+- **Error Handling**: Let the global guard handle auth errors - focus on business logic
+- **Testing**: Mock authentication in tests using custom guards or bypass mechanisms
+
+---
