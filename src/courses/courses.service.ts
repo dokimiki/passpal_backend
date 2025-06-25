@@ -1,27 +1,68 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CourseDto, CourseListResponseDto } from './dto/course.dto';
 
 @Injectable()
 export class CoursesService {
-  async getCourses(page: number, perPage: number) {
-    // TODO: Implement courses fetching logic
-    return {
-      data: [
-        {
-          id: '018c7e0c-4a7d-7c7e-8df4-6d47afd8c8fc',
-          title: '計算機科学概論',
-          leadInstructor: '山田 太郎',
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getCourses(
+    page: number,
+    perPage: number,
+  ): Promise<CourseListResponseDto> {
+    const skip = (page - 1) * perPage;
+
+    const [courses, totalItems] = await Promise.all([
+      this.prisma.course.findMany({
+        skip,
+        take: perPage,
+        orderBy: {
+          title: 'asc',
         },
-      ],
-      meta: { page: 1, per_page: 20, total_pages: 1, total_items: 1 },
+        select: {
+          id: true,
+          title: true,
+          leadInstructor: true,
+        },
+      }),
+      this.prisma.course.count(),
+    ]);
+
+    const totalPages = Math.ceil(totalItems / perPage);
+
+    return {
+      data: courses.map((course) => ({
+        id: course.id,
+        title: course.title,
+        leadInstructor: course.leadInstructor,
+      })),
+      meta: {
+        page,
+        per_page: perPage,
+        total_pages: totalPages,
+        total_items: totalItems,
+      },
     };
   }
 
-  async getCourse(courseId: string) {
-    // TODO: Implement course fetching logic
+  async getCourse(courseId: string): Promise<CourseDto> {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: {
+        id: true,
+        title: true,
+        leadInstructor: true,
+      },
+    });
+
+    if (!course) {
+      throw new NotFoundException('Course not found');
+    }
+
     return {
-      id: courseId,
-      title: '計算機科学概論',
-      leadInstructor: '山田 太郎',
+      id: course.id,
+      title: course.title,
+      leadInstructor: course.leadInstructor,
     };
   }
 }

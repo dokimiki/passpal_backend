@@ -1,5 +1,17 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  ValidationPipe,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { CoursesService } from './courses.service';
+import {
+  CourseListQueryDto,
+  CourseDto,
+  CourseListResponseDto,
+} from './dto/course.dto';
 
 @Controller('courses')
 export class CoursesController {
@@ -7,14 +19,18 @@ export class CoursesController {
 
   @Get()
   async getCourses(
-    @Query('page') page: number = 1,
-    @Query('per_page') perPage: number = 20,
-  ) {
-    return this.coursesService.getCourses(page, perPage);
+    @Query(new ValidationPipe({ transform: true })) query: CourseListQueryDto,
+  ): Promise<CourseListResponseDto> {
+    return this.coursesService.getCourses(
+      query.page || 1,
+      query.per_page || 20,
+    );
   }
 
   @Get(':courseId')
-  async getCourse(@Param('courseId') courseId: string) {
+  async getCourse(
+    @Param('courseId', ParseUUIDPipe) courseId: string,
+  ): Promise<CourseDto> {
     return this.coursesService.getCourse(courseId);
   }
 }
