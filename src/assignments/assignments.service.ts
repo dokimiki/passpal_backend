@@ -1,40 +1,161 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import {
+  AssignmentResponseDto,
+  AssignmentListResponseDto,
+  CreateAssignmentDto,
+  UpdateAssignmentDto,
+} from './dto/assignment.dto';
 
 @Injectable()
 export class AssignmentsService {
-  async getClassAssignments(classId: string) {
-    // TODO: Implement class assignments fetching logic
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getClassAssignments(
+    classId: string,
+  ): Promise<AssignmentListResponseDto> {
+    // Verify class exists
+    const classExists = await this.prisma.class.findUnique({
+      where: { id: classId },
+    });
+
+    if (!classExists) {
+      throw new NotFoundException('Class not found');
+    }
+
+    const assignments = await this.prisma.assignment.findMany({
+      where: { classId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const data: AssignmentResponseDto[] = assignments.map((assignment) => ({
+      id: assignment.id,
+      classId: assignment.classId,
+      manaboDirectoryId: assignment.manaboDirectoryId,
+      manaboAssignmentId: assignment.manaboAssignmentId,
+      openAt: assignment.openAt?.toISOString() || null,
+      dueAt: assignment.dueAt?.toISOString() || null,
+      status: assignment.status,
+    }));
+
     return {
-      data: [
-        {
-          id: '018c7e0c-eeee-ffff-0000-6d47afd8c8fc',
-          classId,
-          manaboDirectoryId: 'week01',
-          manaboAssignmentId: 'hw01',
-          openAt: '2025-04-12T00:00:00Z',
-          dueAt: '2025-04-19T14:59:00Z',
-          status: 'opened',
-        },
-      ],
+      data,
       meta: {
         page: 1,
-        per_page: 20,
+        per_page: assignments.length,
         total_pages: 1,
-        total_items: 1,
+        total_items: assignments.length,
       },
     };
   }
 
-  async getAssignment(assignmentId: string) {
-    // TODO: Implement assignment fetching logic
+  async getAssignment(assignmentId: string): Promise<AssignmentResponseDto> {
+    const assignment = await this.prisma.assignment.findUnique({
+      where: { id: assignmentId },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Assignment not found');
+    }
+
     return {
-      id: assignmentId,
-      classId: '018c7e0c-bbbb-cccc-dddd-6d47afd8c8fc',
-      manaboDirectoryId: 'week01',
-      manaboAssignmentId: 'hw01',
-      openAt: '2025-04-12T00:00:00Z',
-      dueAt: '2025-04-19T14:59:00Z',
-      status: 'opened',
+      id: assignment.id,
+      classId: assignment.classId,
+      manaboDirectoryId: assignment.manaboDirectoryId,
+      manaboAssignmentId: assignment.manaboAssignmentId,
+      openAt: assignment.openAt?.toISOString() || null,
+      dueAt: assignment.dueAt?.toISOString() || null,
+      status: assignment.status,
     };
+  }
+
+  async createAssignment(
+    createAssignmentDto: CreateAssignmentDto,
+  ): Promise<AssignmentResponseDto> {
+    // Verify class exists
+    const classExists = await this.prisma.class.findUnique({
+      where: { id: createAssignmentDto.classId },
+    });
+
+    if (!classExists) {
+      throw new NotFoundException('Class not found');
+    }
+
+    const assignment = await this.prisma.assignment.create({
+      data: {
+        classId: createAssignmentDto.classId,
+        manaboDirectoryId: createAssignmentDto.manaboDirectoryId,
+        manaboAssignmentId: createAssignmentDto.manaboAssignmentId,
+        openAt: createAssignmentDto.openAt
+          ? new Date(createAssignmentDto.openAt)
+          : null,
+        dueAt: createAssignmentDto.dueAt
+          ? new Date(createAssignmentDto.dueAt)
+          : null,
+        status: createAssignmentDto.status,
+      },
+    });
+
+    return {
+      id: assignment.id,
+      classId: assignment.classId,
+      manaboDirectoryId: assignment.manaboDirectoryId,
+      manaboAssignmentId: assignment.manaboAssignmentId,
+      openAt: assignment.openAt?.toISOString() || null,
+      dueAt: assignment.dueAt?.toISOString() || null,
+      status: assignment.status,
+    };
+  }
+
+  async updateAssignment(
+    assignmentId: string,
+    updateAssignmentDto: UpdateAssignmentDto,
+  ): Promise<AssignmentResponseDto> {
+    const existingAssignment = await this.prisma.assignment.findUnique({
+      where: { id: assignmentId },
+    });
+
+    if (!existingAssignment) {
+      throw new NotFoundException('Assignment not found');
+    }
+
+    const assignment = await this.prisma.assignment.update({
+      where: { id: assignmentId },
+      data: {
+        ...(updateAssignmentDto.openAt && {
+          openAt: new Date(updateAssignmentDto.openAt),
+        }),
+        ...(updateAssignmentDto.dueAt && {
+          dueAt: new Date(updateAssignmentDto.dueAt),
+        }),
+        ...(updateAssignmentDto.status && {
+          status: updateAssignmentDto.status,
+        }),
+      },
+    });
+
+    return {
+      id: assignment.id,
+      classId: assignment.classId,
+      manaboDirectoryId: assignment.manaboDirectoryId,
+      manaboAssignmentId: assignment.manaboAssignmentId,
+      openAt: assignment.openAt?.toISOString() || null,
+      dueAt: assignment.dueAt?.toISOString() || null,
+      status: assignment.status,
+    };
+  }
+
+  async deleteAssignment(assignmentId: string): Promise<void> {
+    const existingAssignment = await this.prisma.assignment.findUnique({
+      where: { id: assignmentId },
+    });
+
+    if (!existingAssignment) {
+      throw new NotFoundException('Assignment not found');
+    }
+
+    await this.prisma.assignment.delete({
+      where: { id: assignmentId },
+    });
   }
 }
