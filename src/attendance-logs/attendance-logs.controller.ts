@@ -7,52 +7,69 @@ import {
   Body,
   Query,
   Param,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { AttendanceLogsService } from './attendance-logs.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '@prisma/client';
+import {
+  CreateAttendanceLogDto,
+  UpdateAttendanceLogDto,
+  GetAttendanceLogsQueryDto,
+} from './dto/attendance-log.dto';
 
 @Controller('attendance-logs')
 export class AttendanceLogsController {
   constructor(private readonly attendanceLogsService: AttendanceLogsService) {}
 
   @Get()
-  async getAttendanceLogs(@Query('term') term: string) {
-    return this.attendanceLogsService.getAttendanceLogs(term);
+  async getAttendanceLogs(
+    @Query('term') term: string,
+    @CurrentUser() user: User,
+  ) {
+    if (!term) {
+      throw new BadRequestException('Term parameter is required');
+    }
+    return this.attendanceLogsService.getAttendanceLogs(term, user.id);
   }
 
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   async createAttendanceLog(
-    @Body()
-    attendanceDto: {
-      term: string;
-      recordDate: string;
-      weekday:
-        | 'monday'
-        | 'tuesday'
-        | 'wednesday'
-        | 'thursday'
-        | 'friday'
-        | 'saturday'
-        | 'sunday';
-      period: number;
-      status: 'present' | 'absent' | 'late';
-    },
+    @Body() createAttendanceLogDto: CreateAttendanceLogDto,
+    @CurrentUser() user: User,
   ) {
-    return this.attendanceLogsService.createAttendanceLog(attendanceDto);
+    return this.attendanceLogsService.createAttendanceLog(
+      createAttendanceLogDto,
+      user.id,
+    );
   }
 
   @Patch(':attendanceLogId')
   async updateAttendanceLog(
-    @Param('attendanceLogId') attendanceLogId: string,
-    @Body() updateDto: { status: 'present' | 'absent' | 'late' },
+    @Param('attendanceLogId', ParseUUIDPipe) attendanceLogId: string,
+    @Body() updateAttendanceLogDto: UpdateAttendanceLogDto,
+    @CurrentUser() user: User,
   ) {
     return this.attendanceLogsService.updateAttendanceLog(
       attendanceLogId,
-      updateDto.status,
+      updateAttendanceLogDto,
+      user.id,
     );
   }
 
   @Delete(':attendanceLogId')
-  async deleteAttendanceLog(@Param('attendanceLogId') attendanceLogId: string) {
-    return this.attendanceLogsService.deleteAttendanceLog(attendanceLogId);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAttendanceLog(
+    @Param('attendanceLogId', ParseUUIDPipe) attendanceLogId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.attendanceLogsService.deleteAttendanceLog(
+      attendanceLogId,
+      user.id,
+    );
   }
 }

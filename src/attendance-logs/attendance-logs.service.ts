@@ -1,63 +1,138 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  ConflictException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import {
+  CreateAttendanceLogDto,
+  UpdateAttendanceLogDto,
+  AttendanceLogResponseDto,
+} from './dto/attendance-log.dto';
+import { User } from '@prisma/client';
 
 @Injectable()
 export class AttendanceLogsService {
-  async getAttendanceLogs(term: string) {
-    // TODO: Implement attendance logs fetching logic
-    return {
-      data: [
-        {
-          id: '018c7e0c-1111-2222-3333-6d47afd8c8fc',
-          term,
-          recordDate: '2025-04-15',
-          weekday: 'tuesday',
-          period: 2,
-          status: 'late',
-        },
-      ],
-      meta: {
-        page: 1,
-        per_page: 20,
-        total_pages: 1,
-        total_items: 1,
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getAttendanceLogs(
+    term: string,
+    userId: string,
+  ): Promise<AttendanceLogResponseDto[]> {
+    const attendanceLogs = await this.prisma.attendanceLog.findMany({
+      where: {
+        userId: userId,
+        term: term,
       },
-    };
+      orderBy: [{ recordDate: 'desc' }, { period: 'asc' }],
+    });
+
+    return attendanceLogs.map((log) => ({
+      id: log.id,
+      term: log.term,
+      recordDate: log.recordDate.toISOString().split('T')[0],
+      weekday: log.weekday,
+      period: log.period,
+      status: log.status,
+    }));
   }
 
-  async createAttendanceLog(attendanceDto: {
-    term: string;
-    recordDate: string;
-    weekday:
-      | 'monday'
-      | 'tuesday'
-      | 'wednesday'
-      | 'thursday'
-      | 'friday'
-      | 'saturday'
-      | 'sunday';
-    period: number;
-    status: 'present' | 'absent' | 'late';
-  }) {
-    // TODO: Implement attendance log creation logic
+  async createAttendanceLog(
+    createAttendanceLogDto: CreateAttendanceLogDto,
+    userId: string,
+  ): Promise<AttendanceLogResponseDto> {
+    // Check if an attendance log already exists for the same user, term, date, and period
+    const existingLog = await this.prisma.attendanceLog.findFirst({
+      where: {
+        userId: userId,
+        term: createAttendanceLogDto.term,
+        recordDate: new Date(createAttendanceLogDto.recordDate),
+        period: createAttendanceLogDto.period,
+      },
+    });
+
+    if (existingLog) {
+      throw new ConflictException(
+        'Attendance log already exists for this term, date, and period',
+      );
+    }
+
+    const attendanceLog = await this.prisma.attendanceLog.create({
+      data: {
+        userId: userId,
+        term: createAttendanceLogDto.term,
+        recordDate: new Date(createAttendanceLogDto.recordDate),
+        weekday: createAttendanceLogDto.weekday,
+        period: createAttendanceLogDto.period,
+        status: createAttendanceLogDto.status,
+      },
+    });
+
     return {
-      id: '018c7e0c-7777-8888-9999-6d47afd8c8fc',
-      ...attendanceDto,
+      id: attendanceLog.id,
+      term: attendanceLog.term,
+      recordDate: attendanceLog.recordDate.toISOString().split('T')[0],
+      weekday: attendanceLog.weekday,
+      period: attendanceLog.period,
+      status: attendanceLog.status,
     };
   }
 
   async updateAttendanceLog(
     attendanceLogId: string,
-    status: 'present' | 'absent' | 'late',
-  ) {
-    // TODO: Implement attendance log update logic
+    updateAttendanceLogDto: UpdateAttendanceLogDto,
+    userId: string,
+  ): Promise<AttendanceLogResponseDto> {
+    // First check if the attendance log exists and belongs to the user
+    const existingLog = await this.prisma.attendanceLog.findUnique({
+      where: { id: attendanceLogId },
+    });
+
+    if (!existingLog) {
+      throw new NotFoundException('Attendance log not found');
+    }
+
+    if (existingLog.userId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const updatedLog = await this.prisma.attendanceLog.update({
+      where: { id: attendanceLogId },
+      data: {
+        status: updateAttendanceLogDto.status,
+      },
+    });
+
     return {
-      id: attendanceLogId,
-      status,
+      id: updatedLog.id,
+      term: updatedLog.term,
+      recordDate: updatedLog.recordDate.toISOString().split('T')[0],
+      weekday: updatedLog.weekday,
+      period: updatedLog.period,
+      status: updatedLog.status,
     };
   }
 
-  async deleteAttendanceLog(attendanceLogId: string) {
-    // TODO: Implement attendance log deletion logic
-    return;
+  async deleteAttendanceLog(
+    attendanceLogId: string,
+    userId: string,
+  ): Promise<void> {
+    // First check if the attendance log exists and belongs to the user
+    const existingLog = await this.prisma.attendanceLog.findUnique({
+      where: { id: attendanceLogId },
+    });
+
+    if (!existingLog) {
+      throw new NotFoundException('Attendance log not found');
+    }
+
+    if (existingLog.userId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    await this.prisma.attendanceLog.delete({
+      where: { id: attendanceLogId },
+    });
   }
 }

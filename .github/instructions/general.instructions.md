@@ -178,7 +178,7 @@ import { Public } from '../auth/decorators/public.decorator';
 @Controller('some-public-resource')
 export class PublicController {
   @Get()
-  @Public()  // ← This endpoint requires NO authentication
+  @Public() // ← This endpoint requires NO authentication
   async getPublicData() {
     return this.someService.getPublicData();
   }
@@ -225,7 +225,9 @@ import { DecodedIdToken } from 'firebase-admin/auth';
 @Controller('firebase-data')
 export class FirebaseController {
   @Get('profile')
-  async getFirebaseProfile(@CurrentFirebaseUser() firebaseUser: DecodedIdToken) {
+  async getFirebaseProfile(
+    @CurrentFirebaseUser() firebaseUser: DecodedIdToken,
+  ) {
     // firebaseUser contains Firebase token data (uid, email, etc.)
     return {
       uid: firebaseUser.uid,
@@ -244,6 +246,7 @@ The system automatically handles authentication errors:
 - **403 Forbidden**: User is banned (includes ban reason in message)
 
 Example error responses:
+
 ```json
 // Missing token
 {
@@ -253,7 +256,7 @@ Example error responses:
 
 // Banned user
 {
-  "code": "FORBIDDEN", 
+  "code": "FORBIDDEN",
   "message": "User is banned due to policy violation"
 }
 ```
