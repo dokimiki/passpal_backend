@@ -1,3 +1,7 @@
+---
+applyTo: '**'
+---
+
 # instructions.md
 
 ## 1. Project Purpose
