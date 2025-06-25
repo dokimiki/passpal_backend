@@ -1,5 +1,18 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  ValidationPipe,
+} from '@nestjs/common';
 import { NotificationReportsService } from './notification-reports.service';
+import {
+  CreateNotificationReportDto,
+  NotificationReportResponseDto,
+} from './dto/notification-report.dto';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '@prisma/client';
 
 @Controller('notification-reports')
 export class NotificationReportsController {
@@ -8,16 +21,15 @@ export class NotificationReportsController {
   ) {}
 
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   async createNotificationReport(
-    @Body()
-    reportDto: {
-      manaboDirectoryId: string;
-      manaboAssignmentId: string;
-      openAt?: string;
-      dueAt?: string;
-      reportType: 'appeared' | 'changed' | 'disappeared';
-    },
-  ) {
-    return this.notificationReportsService.createNotificationReport(reportDto);
+    @CurrentUser() user: User,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    reportDto: CreateNotificationReportDto,
+  ): Promise<NotificationReportResponseDto> {
+    return this.notificationReportsService.createNotificationReport(
+      user,
+      reportDto,
+    );
   }
 }
