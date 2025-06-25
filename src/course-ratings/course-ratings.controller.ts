@@ -6,8 +6,19 @@ import {
   Param,
   Body,
   Query,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { CourseRatingsService } from './course-ratings.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '@prisma/client';
+import {
+  CreateCourseRatingDto,
+  CourseRatingResponseDto,
+  CourseRatingListResponseDto,
+} from './dto/course-rating.dto';
 
 @Controller('courses/:courseId/ratings')
 export class CourseRatingsController {
@@ -15,11 +26,12 @@ export class CourseRatingsController {
 
   @Get()
   async getCourseRatings(
-    @Param('courseId') courseId: string,
-    @Query('page') page: number = 1,
-    @Query('per_page') perPage: number = 20,
+    @Param('courseId', ParseUUIDPipe) courseId: string,
+    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
+    @Query('per_page', new ParseIntPipe({ optional: true }))
+    perPage: number = 20,
     @Query('sort') sort?: string,
-  ) {
+  ): Promise<CourseRatingListResponseDto> {
     return this.courseRatingsService.getCourseRatings(
       courseId,
       page,
@@ -29,19 +41,26 @@ export class CourseRatingsController {
   }
 
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   async createCourseRating(
-    @Param('courseId') courseId: string,
-    @Body() ratingDto: { star: number; comment?: string },
-  ) {
+    @Param('courseId', ParseUUIDPipe) courseId: string,
+    @CurrentUser() user: User,
+    @Body() ratingDto: CreateCourseRatingDto,
+  ): Promise<CourseRatingResponseDto> {
     return this.courseRatingsService.createCourseRating(
       courseId,
+      user.id,
       ratingDto.star,
       ratingDto.comment,
     );
   }
 
   @Delete()
-  async deleteCourseRating(@Param('courseId') courseId: string) {
-    return this.courseRatingsService.deleteCourseRating(courseId);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteCourseRating(
+    @Param('courseId', ParseUUIDPipe) courseId: string,
+    @CurrentUser() user: User,
+  ): Promise<void> {
+    return this.courseRatingsService.deleteCourseRating(courseId, user.id);
   }
 }
