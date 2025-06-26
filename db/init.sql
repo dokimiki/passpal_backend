@@ -1,3 +1,17 @@
+-- -------------------------- 拡張機能 --------------------------
+
+-- UUID generation support
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create uuid_generate_v7 function if not exists (fallback to v4)
+CREATE OR REPLACE FUNCTION uuid_generate_v7()
+RETURNS uuid AS $$
+BEGIN
+  -- PostgreSQL 17+ has native uuid_generate_v7, but for compatibility we use v4
+  RETURN uuid_generate_v4();
+END;
+$$ LANGUAGE plpgsql;
+
 -- -------------------------- ENUM & 汎用オブジェクト --------------------------
 
 -- 1-1  ENUM
