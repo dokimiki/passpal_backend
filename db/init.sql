@@ -32,6 +32,16 @@ END; $$;
 
 -- -------------------------- スキーマ定義 --------------------------
 
+-- 2-2  users
+CREATE TABLE users (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  firebase_uid text UNIQUE NOT NULL,
+  banned boolean NOT NULL DEFAULT false,
+  ban_reason text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
 -- 2-1  授業科目 (大学全体で共通の科目マスタ)
 CREATE TABLE courses (
   id            uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -51,16 +61,6 @@ CREATE TABLE course_ratings (
   created_at    timestamptz NOT NULL DEFAULT NOW(),
   updated_at    timestamptz NOT NULL DEFAULT NOW(),
   PRIMARY KEY (course_id, user_id)
-);
-
--- 2-2  users
-CREATE TABLE users (
-  id            uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
-  firebase_uid  text UNIQUE NOT NULL,
-  banned        boolean NOT NULL DEFAULT false,
-  ban_reason    text,
-  created_at    timestamptz NOT NULL DEFAULT NOW(),
-  updated_at    timestamptz NOT NULL DEFAULT NOW()
 );
 
 -- 2-2-a: FCM デバイストークン
