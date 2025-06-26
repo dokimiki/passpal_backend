@@ -4,8 +4,8 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-  ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
@@ -23,7 +23,7 @@ export class AuthController {
     try {
       return await this.authService.signup(signupDto.firebaseUid);
     } catch (error) {
-      if (error instanceof ConflictException) {
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) {
         throw error;
       }
       throw new BadRequestException('Invalid signup data');
