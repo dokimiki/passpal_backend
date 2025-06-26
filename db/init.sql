@@ -89,6 +89,18 @@ CREATE TABLE attendance_logs (
 CREATE INDEX ON attendance_logs (user_id, term);
 CREATE INDEX ON attendance_logs (record_date);
 
+-- 2-3  授業 (具体的な曜日、時限などを含む)
+CREATE TABLE classes (
+  id               uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  term             text NOT NULL,
+  manabo_class_id  text NOT NULL,
+  course_id        uuid REFERENCES courses(id) ON DELETE RESTRICT,
+  created_at       timestamptz NOT NULL DEFAULT NOW(),
+  updated_at       timestamptz NOT NULL DEFAULT NOW(),
+  UNIQUE(term, manabo_class_id)
+);
+
+
 -- 2-4  課題
 CREATE TABLE assignments (
   id                   uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -111,17 +123,6 @@ CREATE TABLE notification_reports (
   report_type     report_type_enum NOT NULL,
   created_at      timestamptz NOT NULL DEFAULT NOW(),
   updated_at      timestamptz NOT NULL DEFAULT NOW()
-);
-
--- 2-3  授業 (具体的な曜日、時限などを含む)
-CREATE TABLE classes (
-  id               uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
-  term             text NOT NULL,
-  manabo_class_id  text NOT NULL,
-  course_id        uuid REFERENCES courses(id) ON DELETE RESTRICT,
-  created_at       timestamptz NOT NULL DEFAULT NOW(),
-  updated_at       timestamptz NOT NULL DEFAULT NOW(),
-  UNIQUE(term, manabo_class_id)
 );
 
 -- 2-3-a: クラス – 通知ユーザー
