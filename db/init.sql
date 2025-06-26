@@ -89,6 +89,20 @@ CREATE TABLE attendance_logs (
 CREATE INDEX ON attendance_logs (user_id, term);
 CREATE INDEX ON attendance_logs (record_date);
 
+-- 2-4  課題
+CREATE TABLE assignments (
+  id                   uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  class_id             uuid NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  manabo_directory_id  text NOT NULL,
+  manabo_assignment_id text NOT NULL,
+  open_at              timestamptz,
+  due_at               timestamptz,
+  status               assignment_status_enum NOT NULL,
+  created_at           timestamptz NOT NULL DEFAULT NOW(),
+  updated_at           timestamptz NOT NULL DEFAULT NOW(),
+  UNIQUE(class_id, manabo_directory_id, manabo_assignment_id)
+);
+
 -- 2-2-c: 課題通知報告
 CREATE TABLE notification_reports (
   id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -115,20 +129,6 @@ CREATE TABLE class_notifiers (
   class_id    uuid REFERENCES classes(id) ON DELETE CASCADE,
   user_id     uuid REFERENCES users(id)   ON DELETE CASCADE,
   PRIMARY KEY (class_id, user_id)
-);
-
--- 2-4  課題
-CREATE TABLE assignments (
-  id                   uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
-  class_id             uuid NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-  manabo_directory_id  text NOT NULL,
-  manabo_assignment_id text NOT NULL,
-  open_at              timestamptz,
-  due_at               timestamptz,
-  status               assignment_status_enum NOT NULL,
-  created_at           timestamptz NOT NULL DEFAULT NOW(),
-  updated_at           timestamptz NOT NULL DEFAULT NOW(),
-  UNIQUE(class_id, manabo_directory_id, manabo_assignment_id)
 );
 
 -- 2-5  トリガ適用
