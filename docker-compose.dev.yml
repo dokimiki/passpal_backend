@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: passpal_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: passpal_dev
+      POSTGRES_USER: passpal_user
+      POSTGRES_PASSWORD: passpal_password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - passpal_dev_network
+
+  # PassPal Backend API (Development)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: passpal_api_dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://passpal_user:passpal_password@postgres:5432/passpal_dev?schema=public
+      GOOGLE_APPLICATION_CREDENTIALS: /app/config/firebase-admin-sdk.json
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - ./config/firebase-admin-sdk.json:/app/config/firebase-admin-sdk.json:ro
+    ports:
+      - "3000:3000"
+      - "9229:9229" # Debug port
+    depends_on:
+      - postgres
+    networks:
+      - passpal_dev_network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: passpal_redis_dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - passpal_dev_network
+
+  # Prisma Studio
+  prisma-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile.prisma
+    container_name: passpal_prisma_studio_dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://passpal_user:passpal_password@postgres:5432/passpal_dev?schema=public
+    ports:
+      - "5555:5555"
+    depends_on:
+      - postgres
+    networks:
+      - passpal_dev_network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  node_modules:
+    driver: local
+
+networks:
+  passpal_dev_network:
+    driver: bridge
